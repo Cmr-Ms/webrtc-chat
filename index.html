@@ -68,8 +68,8 @@
 
 		async function send_text() {
 			const text = document.getElementById('text').value
-
 			channel.send(text)
+			document.querySelector("#msglog").innerHTML = `<div>${text}</div>` + document.querySelector("#msglog").innerHTML //alert(event.data)
 		}
 	</script>
 	<table width="70%" border="1">
