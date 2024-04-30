@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+	<meta charset="UTF-8" />
+	<title>webRTC板SC</title>
+	<style>
+	</style>
+</head>
+
+<body>
+	<script>
+		let channel = null
+		const connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+		Notification.requestPermission()
+		connection.ondatachannel = (event) => {
+			//console.log('ondatachannel')
+			channel = event.channel
+			// channel.onopen = event => console.log('onopen', event);
+			// channel.onmessage = event => console.log('onmessage', event);
+			channel.onmessage = (event) => {
+				document.querySelector("#msglog").innerHTML = `<div>${event.data}</div>` + document.querySelector("#msglog").innerHTML
+			}
+		}
+
+		connection.onconnectionstatechange = (event) => (document.getElementById('connectionState').innerText = connection.connectionState) // console.log('onconnectionstatechange', connection.connectionState)
+		connection.oniceconnectionstatechange = (event) =>
+			(document.getElementById('iceConnectionState').innerText = connection.iceConnectionState) // console.log('oniceconnectionstatechange', connection.iceConnectionState)
+
+		async function step_1_initiator_create_offer() {
+			channel = connection.createDataChannel('data')
+			// channel.onopen = event => console.log('onopen', event)
+			// channel.onmessage = event => console.log('onmessage', event)
+			channel.onmessage = (event) => document.querySelector("#msglog").innerHTML = `<div>${event.data}</div>` + document.querySelector("#msglog").innerHTML //alert(event.data)
+
+			connection.onicecandidate = (event) => {
+				// console.log('onicecandidate', event)
+				if (!event.candidate) {
+					document.getElementById('createdOffer').value = JSON.stringify(connection.localDescription)
+				}
+			}
+
+			const offer = await connection.createOffer()
+			await connection.setLocalDescription(offer)
+		}
+
+		async function step_2_accept_remote_offer() {
+			const offer = JSON.parse(document.getElementById('remoteOffer').value)
+			await connection.setRemoteDescription(offer)
+		}
+
+		async function step_3_create_answer() {
+			connection.onicecandidate = (event) => {
+				// console.log('onicecandidate', event)
+				if (!event.candidate) {
+					document.getElementById('createdAnswer').value = JSON.stringify(connection.localDescription)
+				}
+			}
+
+			const answer = await connection.createAnswer()
+			await connection.setLocalDescription(answer)
+		}
+
+		async function step_4_accept_answer() {
+			const answer = JSON.parse(document.getElementById('remoteAnswer').value)
+			await connection.setRemoteDescription(answer)
+		}
+
+		async function send_text() {
+			const text = document.getElementById('text').value
+
+			channel.send(text)
+		}
+	</script>
+	<table width="70%" border="1">
+		<tr>
+			<th>#</th>
+			<th>要求側</th>
+			<th>応答側</th>
+			<th colspan="2">接続</th>
+		</tr>
+		<tr>
+			<td>ステップ1,2</td>
+			<td>
+				<input id="createdOffer" type="text"/>
+			</td>
+			<td>
+				<input id="remoteOffer" type="text" placeholder="接続要求をここにペースト" />
+				<input type="button" value="要求を承諾" onclick="step_2_accept_remote_offer();step_3_create_answer()" />
+			</td>
+			<th>接続状態</th>
+			<td id="connectionState">不明</td>
+			
+		</tr>
+		<tr>
+			<td>ステップ3,4</td>
+			<td>
+				<input id="remoteAnswer" type="text" placeholder="応答をペースト" />
+				<input type="button" value="応答を承諾" onclick="step_4_accept_answer()" />
+			</td>
+			<td>
+				<input id="createdAnswer" type="text" placeholder="応答"/>
+			</td>
+			<th>ICE接続状態</th>
+				<td id="iceConnectionState">不明</td>
+			
+		</tr>
+		
+	</table>
+	
+	<textarea id="text" placeholder="メッセージを入力" rows="2" cols="60"></textarea>
+	<div id="msglog" aria-placeholder=""></div>
+	<script>
+		const text = document.querySelector("#text")
+		document.querySelector("#text").addEventListener("keyup", e=>{
+			console.log(e)
+			if(e.key === "Enter" && !e.shiftKey){
+				send_text(text.value)
+				text.value=""
+			}
+		})
+		window.onload = step_1_initiator_create_offer()
+	</script>
+</body>
+
+</html>
