@@ -10,128 +10,153 @@
 
 <body>
 	<script>
-		let channel = null
-		const connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+		//接続、チャンネルが作成されるごとにonを設定する必要がある、そのための関数やクラスなどを作る
+
+		channels = []
+		connections = []
 		navigator.geolocation.getCurrentPosition(()=>{})
 		Notification.requestPermission()
-		connection.ondatachannel = (event) => {
-			//console.log('ondatachannel')
-			channel = event.channel
-			// channel.onopen = event => console.log('onopen', event);
-			// channel.onmessage = event => console.log('onmessage', event);
-			channel.onmessage = (event) => {
-				//document.querySelector("#msglog").innerHTML = `<div>${event.data}</div>` + document.querySelector("#msglog").innerHTML
-				elem = document.createElement("div")
-				elem.innerHTML = text
-				document.querySelector("#msglog").prepend(elem)
-			}
-		}
 
-		connection.onconnectionstatechange = (event) => (document.getElementById('connectionState').innerText = connection.connectionState) // console.log('onconnectionstatechange', connection.connectionState)
-		connection.oniceconnectionstatechange = (event) =>
-			(document.getElementById('iceConnectionState').innerText = connection.iceConnectionState) // console.log('oniceconnectionstatechange', connection.iceConnectionState)
+		async function createnewconnection(){
+			let connection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
+			connection.ondatachannel = (event) => {
+				let channel = event.channel
+				channel.onopen = async (event) => {
+					console.log("open", event.target)
+					await sendmsg(event.target, "uuid", myuuid)
+				}
+				channel.onmessage = async (event) => {
+					console.log(event.target)
+					let data = JSON.parse(event.data)
+					switch(data["type"]){
+						//メッセージ、接続転送要求、転送された接続要求、接続応答、転送された接続応答
+						case "msg":
+							writelog(data["content"])
+							break
+						case "req":
+							//相手のuuid、自分のuuid、自分の接続情報
+							req = JSON.parse(data["content"])
+							if(uuids.includes(req["uuid"])){
+								channels.filter(c=>c.uuid==req["uuids"]).forEach(c=>{
+									sendmsg(c, "fwdreq", req["ldes"])
+								})
+							}
+						case "fwdreq":
 
-		async function step_1_initiator_create_offer() {
-			channel = connection.createDataChannel('data')
-			// channel.onopen = event => console.log('onopen', event)
-			// channel.onmessage = event => console.log('onmessage', event)
-			channel.onmessage = (event) => {
-				elem = document.createElement("div")
-				elem.innerHTML = event.data
-				document.querySelector("#msglog").prepend(elem)
-			}
-			//document.querySelector("#msglog").innerHTML = `<div>${event.data}</div>` + document.querySelector("#msglog").innerHTML //alert(event.data)
+						case "res":
+							
+						case "fwdres":
 
-			connection.onicecandidate = (event) => {
-				// console.log('onicecandidate', event)
-				if (!event.candidate) {
-					document.getElementById('createdOffer').value = JSON.stringify(connection.localDescription)
+					}
+					//uuidを送りつけて、一致したらそのuuidの接続に送りつける
+					//uuidと一緒に自分の接続情報を送りつける、接続済みの他のクライアントがuuidを持っていたらそのuuidのクライアントに接続情報をおくる
+					//さらにその応答を戻す
+					//処理で判別するかメッセージで判別するか
+					//最初の画面でpromptを出して接続するかする、または別のところにシグナリングサーバーを作る
+					//
 				}
 			}
+			
+			let channel = connection.createDataChannel('data')
+			channel.onmessage = (event) => {
+				console.log(event.target)
+				let data = JSON.parse(event.data)
+				switch(data["type"]){
+					case "uuid":
+						writelog(event.target.uuid = data["content"])
+						updateuuids(data["content"])
+				}
+			}
+			connection.onicecandidate = (event) => {
+				//すでに1つ以上の接続がある場合、その接続に対して問い合わせる、ない場合はクリップボードにコピー
+				//
+				if (!event.candidate && channels.length > 1) {
 
-			const offer = await connection.createOffer()
+					channels.filter(c=>c.readyState == "open").forEach(c=>{
+						sendmsg()
+					})
+
+				}else navigator.clipboard.writeText(JSON.stringify(connection.localDescription))
+			}
+
+			let offer = await connection.createOffer()
 			await connection.setLocalDescription(offer)
+			connections.push(connection)
+			channels.push(channel)
 		}
 
 		async function step_2_accept_remote_offer() {
-			const offer = JSON.parse(document.getElementById('remoteOffer').value)
-			await connection.setRemoteDescription(offer)
+			let offer = JSON.parse(await navigator.clipboard.readText())
+			await connections[0].setRemoteDescription(offer)
 		}
 
 		async function step_3_create_answer() {
-			connection.onicecandidate = (event) => {
+			connections[0].onicecandidate = (event) => {
 				// console.log('onicecandidate', event)
 				if (!event.candidate) {
-					document.getElementById('createdAnswer').value = JSON.stringify(connection.localDescription)
+					navigator.clipboard.writeText(JSON.stringify(connections[0].localDescription))
 				}
 			}
 
-			const answer = await connection.createAnswer()
-			await connection.setLocalDescription(answer)
+			let answer = await connections[0].createAnswer()
+			await connections[0].setLocalDescription(answer)
 		}
 
 		async function step_4_accept_answer() {
-			const answer = JSON.parse(document.getElementById('remoteAnswer').value)
-			await connection.setRemoteDescription(answer)
+			let answer = JSON.parse(await navigator.clipboard.readText())
+			await connections[0].setRemoteDescription(answer)
 		}
 
-		async function send_text() {
-			const text = document.getElementById('text').value
-			channel.send(text)
+		async function sendmsg(channel, type, content) {
+			let text = document.querySelector("#sendto")
+			await channel.send(JSON.stringify({type: type, content:content}))
+		}
+		function writelog(content){
 			elem = document.createElement("div")
-			elem.innerHTML = text
+			elem.innerHTML = content
 			document.querySelector("#msglog").prepend(elem)
-			//.innerHTML = `<div>${text}</div>` + document.querySelector("#msglog").innerHTML //alert(event.data)
+		}
+		function updateuuids(uuid=""){
+			uuids = uuid && Array.from(new Set(JSON.parse(localStorage["uuids"]).concat(uuid))) || []
+			console.log(localStorage["uuids"] = JSON.stringify(uuids))
 		}
 	</script>
-	<table width="70%" border="1">
-		<tr>
-			<th>#</th>
-			<th>要求側</th>
-			<th>応答側</th>
-			<th colspan="2">接続</th>
-		</tr>
-		<tr>
-			<td>ステップ1,2</td>
-			<td>
-				<input id="createdOffer" type="text"/>
-			</td>
-			<td>
-				<input id="remoteOffer" type="text" placeholder="接続要求をここにペースト" />
-				<input type="button" value="要求を承諾" onclick="step_2_accept_remote_offer();step_3_create_answer()" />
-			</td>
-			<th>接続状態</th>
-			<td id="connectionState">不明</td>
-			
-		</tr>
-		<tr>
-			<td>ステップ3,4</td>
-			<td>
-				<input id="remoteAnswer" type="text" placeholder="応答をペースト" />
-				<input type="button" value="応答を承諾" onclick="step_4_accept_answer()" />
-			</td>
-			<td>
-				<input id="createdAnswer" type="text" placeholder="応答"/>
-			</td>
-			<th>ICE接続状態</th>
-				<td id="iceConnectionState">不明</td>
-			
-		</tr>
-		
-	</table>
-	
+	<button onclick="navigator.clipboard.writeText(JSON.stringify(connections[0].localDescription))">最初の接続要求</button>
+	<button onclick="step_2_accept_remote_offer()">接続要求の入力</button>
+	<button onclick="step_3_create_answer()">応答をコピー</button>
+	<button onclick="step_4_accept_answer()">相手からの応答を入力</button>	
+	<hr>			
+	<textarea id="sendto" placeholder="間接接続要求"></textarea>
+	<select size="3" multiple>
+		<option>接続先を選択</option>
+	</select>
+	<br>
 	<textarea id="text" placeholder="メッセージを入力" rows="2" cols="60"></textarea>
-	<div id="msglog" aria-placeholder=""></div>
+	<div id="msglog"></div>
 	<script>
-		const text = document.querySelector("#text")
+		let text = document.querySelector("#text")
 		document.querySelector("#text").addEventListener("keyup", e=>{
-			console.log(e)
+			//console.log(e)
 			if(e.key === "Enter" && !e.shiftKey){
-				send_text(text.value)
+				sendmsg(channels[0], "msg", text.value)
+				writelog(text.value)
 				text.value=""
 			}
 		})
-		window.onload = step_1_initiator_create_offer()
+		myuuid = localStorage["myuuid"] || localStorage.setItem("myuuid", crypto.randomUUID())
+		localStorage["uuids"] || localStorage.setItem("uuids", "[]")
+		//ユーザー名とUUIDを収集
+		//UUIDとユーザー名のリクエストがあった場合検索
+		//ある場合検索、接続要求を転送
+		//ハッシュのほうがセキュリティ上いいかもしれない
+		//間接接続要求のときはハッシュのみ転送し、そのハッシュ値を送る
+		//かぶらせないようにするためとりあえずはuuid、パスワード保護ユーザーも必要かもしれない
+		//端的に言うとメッシュネットワークらしい。結局メッシュさえ構築できればサーバーいらずになる
+
+		window.onload = ()=>{
+			createnewconnection()
+			updateuuids()
+		}
 	</script>
 </body>
 
