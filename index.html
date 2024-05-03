@@ -31,7 +31,7 @@
 					switch(data["type"]){
 						//メッセージ、接続転送要求、転送された接続要求、接続応答、転送された接続応答
 						case "msg":
-							writelog(data["content"])
+							writelog("<"+data["content"])
 							break
 						case "req":
 							//相手のuuid、自分のuuid、自分の接続情報
@@ -139,7 +139,7 @@
 			//console.log(e)
 			if(e.key === "Enter" && !e.shiftKey){
 				sendmsg(channels[0], "msg", text.value)
-				writelog(text.value)
+				writelog(">"+text.value)
 				text.value=""
 			}
 		})
